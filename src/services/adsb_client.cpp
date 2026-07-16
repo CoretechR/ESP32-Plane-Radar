@@ -5,6 +5,7 @@
 
 #include <ArduinoJson.h>
 
+#include <cmath>
 #include <cstring>
 
 #include "config.h"
@@ -15,8 +16,10 @@ namespace {
 
 constexpr char kApiBase[] = "https://opendata.adsb.fi/api/v3/lat/";
 constexpr float kKmPerNm = 1.852f;
+constexpr float kKmPerDeg = 111.0f;
 constexpr int kConnectAttemptMs = 200;
 constexpr unsigned long kRequestTimeoutMs = 10000;
+constexpr uint32_t kDeadReckonMaxMs = 8000;
 
 Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
@@ -254,6 +257,7 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   }
 
   size_t n = 0;
+  const uint32_t now_ms = millis();
   for (JsonObject plane : ac) {
     if (n >= kMaxAircraft) {
       break;
@@ -270,6 +274,7 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     s_aircraft[n].nose_deg = pickNoseHeading(plane);
     s_aircraft[n].track_deg = pickTrackHeading(plane);
     s_aircraft[n].gs_knots = pickGroundSpeed(plane);
+    s_aircraft[n].last_update_ms = now_ms;
     fillTagFields(&s_aircraft[n], plane);
     ++n;
   }
@@ -277,6 +282,35 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   s_aircraft_count = n;
   Serial.printf("adsb: %u aircraft\n", static_cast<unsigned>(n));
   return true;
+}
+
+void deadReckonPosition(const Aircraft& aircraft, uint32_t now_ms,
+                        float* out_lat, float* out_lon) {
+  if (out_lat == nullptr || out_lon == nullptr) {
+    return;
+  }
+
+  *out_lat = aircraft.lat;
+  *out_lon = aircraft.lon;
+
+  if (aircraft.gs_knots <= 0.0f) {
+    return;
+  }
+
+  uint32_t age_ms = now_ms - aircraft.last_update_ms;
+  if (age_ms > kDeadReckonMaxMs) {
+    age_ms = kDeadReckonMaxMs;
+  }
+
+  constexpr float kDegToRad = 0.01745329252f;
+  const float track_rad = aircraft.track_deg * kDegToRad;
+  const float speed_km_per_s = aircraft.gs_knots * kKmPerNm / 3600.0f;
+  const float travel_km = speed_km_per_s * (static_cast<float>(age_ms) / 1000.0f);
+  const float dx_km = sinf(track_rad) * travel_km;
+  const float dy_km = cosf(track_rad) * travel_km;
+
+  *out_lat += dy_km / kKmPerDeg;
+  *out_lon += dx_km / kKmPerDeg;
 }
 
 }  // namespace services::adsb

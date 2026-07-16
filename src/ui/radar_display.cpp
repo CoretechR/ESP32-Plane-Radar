@@ -1,9 +1,11 @@
 #include "ui/radar_display.h"
 
 #include <lgfx/v1/lgfx_fonts.hpp>
+#include <pgmspace.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 
 #include "config.h"
@@ -15,7 +17,7 @@
 #include "ui/radar_theme.h"
 #include "ui/runway_overlay.h"
 
-namespace fonts = lgfx::v1::fonts;
+//namespace fonts = lgfx::v1::fonts;
 
 namespace ui {
 namespace radar {
@@ -55,6 +57,267 @@ lgfx::LovyanGFX* s_draw = &tft;
 LGFX_Sprite s_frame(&tft);
 bool s_frame_ready = false;
 
+constexpr int kAirlinerSpriteSize = 15;
+constexpr int kAirlinerSpriteHalf = kAirlinerSpriteSize / 2;
+const uint8_t kSpriteNarrowbody[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 235, 237, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 60, 255, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {64, 0, 0, 0, 0, 0, 0, 255, 255, 255, 144, 0, 0, 0, 0},
+    {255, 255, 0, 0, 0, 0, 0, 255, 255, 255, 184, 0, 0, 0, 0},
+    {159, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+    {128, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+    {255, 255, 0, 0, 0, 0, 0, 255, 255, 255, 196, 0, 0, 0, 0},
+    {96, 0, 0, 0, 0, 0, 0, 255, 255, 255, 144, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 239, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 60, 255, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 243, 237, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+};
+
+const uint8_t kSpriteWidebody[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 255, 240, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 18, 255, 140, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 199, 255, 141, 0, 0, 0, 0, 0, 0},
+    {9, 69, 0, 0, 0, 0, 137, 255, 255, 255, 171, 0, 0, 0, 0},
+    {77, 255, 30, 0, 0, 0, 152, 255, 255, 255, 255, 0, 0, 0, 0},
+    {0, 255, 255, 189, 255, 255, 255, 255, 255, 255, 255, 255, 255, 148, 0},
+    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+    {0, 255, 255, 176, 255, 255, 255, 255, 255, 255, 255, 255, 255, 177, 7},
+    {70, 255, 27, 0, 0, 0, 166, 255, 255, 255, 255, 0, 0, 0, 0},
+    {15, 95, 0, 0, 0, 0, 138, 255, 255, 255, 203, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 215, 255, 146, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 253, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 20, 255, 144, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 252, 240, 0, 0, 0, 0, 0, 0, 0, 0},
+};
+
+const uint8_t kSpriteRegionalJet[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 255, 240, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 18, 255, 140, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 199, 255, 141, 0, 0, 0, 0, 0, 0},
+    {9, 69, 0, 0, 0, 0, 137, 255, 255, 255, 171, 0, 0, 0, 0},
+    {77, 255, 30, 0, 0, 0, 152, 255, 255, 255, 255, 0, 0, 0, 0},
+    {0, 255, 255, 189, 255, 255, 255, 255, 255, 255, 255, 255, 255, 148, 0},
+    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+    {0, 255, 255, 176, 255, 255, 255, 255, 255, 255, 255, 255, 255, 177, 7},
+    {70, 255, 27, 0, 0, 0, 166, 255, 255, 255, 255, 0, 0, 0, 0},
+    {15, 95, 0, 0, 0, 0, 138, 255, 255, 255, 203, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 215, 255, 146, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 253, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 20, 255, 144, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 252, 240, 0, 0, 0, 0, 0, 0, 0, 0},
+};
+
+const uint8_t kSpriteTurboprop[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 0, 0, 255, 88, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 8, 0, 0, 0, 0, 4, 255, 255, 47, 0, 0, 0, 0, 0},
+    {0, 255, 255, 0, 0, 0, 255, 255, 255, 255, 17, 0, 0, 0, 0},
+    {0, 255, 255, 156, 255, 255, 255, 255, 255, 255, 255, 255, 255, 3, 0},
+    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0},
+    {0, 255, 255, 197, 255, 255, 255, 255, 255, 255, 255, 255, 255, 17, 0},
+    {0, 255, 255, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0},
+    {0, 20, 5, 0, 0, 0, 5, 255, 255, 39, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 69, 0, 0, 0, 0, 0, 0},
+};
+
+const uint8_t kSpriteBusinessJet[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 24, 0, 0, 0, 0, 0, 0},
+    {255, 255, 0, 0, 34, 7, 255, 255, 255, 0, 0, 0, 0, 0, 0},
+    {255, 255, 12, 255, 255, 255, 255, 255, 255, 226, 226, 226, 226, 85, 0},
+    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+    {255, 255, 12, 255, 255, 255, 255, 255, 255, 236, 236, 236, 236, 91, 0},
+    {255, 249, 0, 0, 45, 16, 255, 255, 255, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 32, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 12, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+};
+
+  const uint8_t kSpriteSingleEngine[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 69, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 154, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 62, 255, 255, 176, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 186, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 196, 0, 0, 0, 0},
+    {0, 0, 209, 255, 78, 0, 0, 255, 255, 255, 186, 21, 0, 0, 0},
+    {0, 0, 255, 255, 154, 48, 142, 255, 255, 255, 246, 245, 128, 0, 0},
+    {0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0},
+    {0, 0, 255, 255, 194, 152, 213, 255, 255, 255, 254, 252, 128, 0, 0},
+    {0, 0, 226, 255, 76, 0, 0, 255, 255, 255, 186, 45, 10, 0, 0},
+    {0, 0, 0, 14, 0, 0, 0, 255, 255, 255, 196, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 186, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 128, 255, 255, 176, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 154, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 102, 0, 0, 0, 0},
+};
+
+const uint8_t kSpriteHelicopter[kAirlinerSpriteSize][kAirlinerSpriteSize] PROGMEM = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 54, 172, 0, 0, 0, 0, 0, 0, 0, 229, 128},
+    {0, 0, 0, 0, 150, 255, 168, 0, 0, 0, 0, 0, 239, 255, 53},
+    {0, 0, 0, 0, 0, 225, 255, 199, 0, 0, 0, 203, 255, 118, 0},
+    {0, 0, 255, 255, 163, 0, 187, 255, 210, 0, 179, 255, 128, 0, 0},
+    {0, 60, 64, 255, 102, 60, 188, 255, 255, 255, 255, 255, 255, 201, 0},
+    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0},
+    {0, 49, 64, 255, 100, 60, 210, 255, 255, 255, 255, 255, 255, 219, 0},
+    {0, 0, 234, 255, 169, 0, 26, 255, 234, 0, 60, 255, 255, 0, 0},
+    {0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 40, 255, 255, 0},
+    {0, 0, 0, 0, 5, 255, 254, 0, 0, 0, 0, 0, 46, 255, 224},
+    {0, 0, 0, 0, 30, 231, 0, 0, 0, 0, 0, 0, 0, 56, 153},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+};
+
+bool startsWith(const char* value, const char* prefix) {
+  if (value == nullptr || prefix == nullptr) {
+    return false;
+  }
+  const size_t prefix_len = strlen(prefix);
+  if (prefix_len == 0) {
+    return false;
+  }
+  return strncmp(value, prefix, prefix_len) == 0;
+}
+
+bool isAsciiDigit(char c) { return c >= '0' && c <= '9'; }
+
+bool hasAnyDigit(const char* value) {
+  if (value == nullptr) {
+    return false;
+  }
+  for (size_t i = 0; value[i] != '\0'; ++i) {
+    if (isAsciiDigit(value[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isLikelyLightSingleEngineType(const char* type) {
+  if (type == nullptr || type[0] == '\0') {
+    return false;
+  }
+
+  const size_t len = strlen(type);
+  if (len < 2 || len > 4 || !hasAnyDigit(type)) {
+    return false;
+  }
+
+  // Exclude common airliner/regional/turboprop/business/heli prefixes first.
+  if (startsWith(type, "A") || startsWith(type, "B") ||
+      startsWith(type, "E") || startsWith(type, "CRJ") ||
+      startsWith(type, "DH") || startsWith(type, "AT") ||
+      startsWith(type, "SF") || startsWith(type, "MD") ||
+      startsWith(type, "SU") || startsWith(type, "EC") ||
+      startsWith(type, "AS") || startsWith(type, "AW") ||
+      startsWith(type, "R44") || startsWith(type, "R66") ||
+      startsWith(type, "C5") || startsWith(type, "C6") ||
+      startsWith(type, "C7") || startsWith(type, "LJ") ||
+      startsWith(type, "GL") || startsWith(type, "FA") ||
+      startsWith(type, "PC12")) {
+    return false;
+  }
+
+  // Typical GA / ultralight prefixes around Europe.
+  return startsWith(type, "C1") || startsWith(type, "C2") ||
+         startsWith(type, "C3") || startsWith(type, "C4") ||
+         startsWith(type, "PA") || startsWith(type, "P2") ||
+         startsWith(type, "P3") || startsWith(type, "SR") ||
+         startsWith(type, "S10") || startsWith(type, "S12") ||
+         startsWith(type, "VL") || startsWith(type, "WT") ||
+         startsWith(type, "FK") || startsWith(type, "CT") ||
+         startsWith(type, "UL");
+}
+
+const uint8_t (*spriteForType(const char* type))[kAirlinerSpriteSize] {
+  if (type == nullptr || type[0] == '\0') {
+    return kSpriteNarrowbody;
+  }
+
+  // Frankfurt traffic tuned mapping:
+  // narrowbody-heavy LH/4U/EW and many European airlines.
+  if (startsWith(type, "A31") || startsWith(type, "A19") ||
+      startsWith(type, "A20") || startsWith(type, "A21") ||
+      startsWith(type, "B73") || startsWith(type, "B38") ||
+      startsWith(type, "B39") || startsWith(type, "B75") ||
+      startsWith(type, "A22") || startsWith(type, "A32")) {
+    return kSpriteNarrowbody;
+  }
+
+  // FRA long-haul and cargo heavy types.
+  if (startsWith(type, "A33") || startsWith(type, "A34") ||
+      startsWith(type, "A35") || startsWith(type, "A38") ||
+      startsWith(type, "B74") || startsWith(type, "B77") ||
+      startsWith(type, "B78") || startsWith(type, "MD11") ||
+      startsWith(type, "B76")) {
+    return kSpriteWidebody;
+  }
+
+  // Regional jets common in Germany/Europe feeder traffic.
+  if (startsWith(type, "E17") || startsWith(type, "E18") ||
+      startsWith(type, "E19") || startsWith(type, "E2") ||
+      startsWith(type, "CRJ") || startsWith(type, "C55") ||
+      startsWith(type, "SU9")) {
+    return kSpriteRegionalJet;
+  }
+
+  if (startsWith(type, "AT") || startsWith(type, "DH8") ||
+      startsWith(type, "DHC") || startsWith(type, "SF3") ||
+      startsWith(type, "C27") || startsWith(type, "F50")) {
+    return kSpriteTurboprop;
+  }
+
+  if (startsWith(type, "EC") || startsWith(type, "AS") ||
+      startsWith(type, "AW") || startsWith(type, "R44") ||
+      startsWith(type, "R66") || type[0] == 'H') {
+    return kSpriteHelicopter;
+  }
+
+  // Small piston single-engine / ultralight / sport aircraft.
+  if (startsWith(type, "C1") || startsWith(type, "C2") ||
+      startsWith(type, "C3") || startsWith(type, "C4") ||
+      startsWith(type, "PA1") || startsWith(type, "PA2") ||
+      startsWith(type, "PA3") || startsWith(type, "P28") ||
+      startsWith(type, "P32") || startsWith(type, "P46") ||
+      startsWith(type, "SR2") || startsWith(type, "S10") ||
+      startsWith(type, "S12") || startsWith(type, "UL") ||
+      startsWith(type, "FK") || startsWith(type, "CT") ||
+      startsWith(type, "WT9") || startsWith(type, "VL3") ||
+      startsWith(type, "EUPA")) {
+    return kSpriteSingleEngine;
+  }
+
+  if (isLikelyLightSingleEngineType(type)) {
+    return kSpriteSingleEngine;
+  }
+
+  if (startsWith(type, "C5") || startsWith(type, "C6") ||
+      startsWith(type, "C7") || startsWith(type, "LJ") ||
+      startsWith(type, "FA") || startsWith(type, "GL") ||
+      startsWith(type, "PC12")) {
+    return kSpriteBusinessJet;
+  }
+
+  return kSpriteNarrowbody;
+}
+
 class DrawScope {
  public:
   explicit DrawScope(lgfx::LovyanGFX& gfx) : prev_(s_draw) { s_draw = &gfx; }
@@ -65,6 +328,105 @@ class DrawScope {
 };
 
 int absDiff(int a, int b) { return std::abs(a - b); }
+
+uint16_t blendRgb565(uint16_t fg, uint16_t bg, uint8_t fg_alpha) {
+  const uint8_t bg_alpha = static_cast<uint8_t>(255 - fg_alpha);
+
+  const uint8_t fr5 = static_cast<uint8_t>((fg >> 11) & 0x1F);
+  const uint8_t fg6 = static_cast<uint8_t>((fg >> 5) & 0x3F);
+  const uint8_t fb5 = static_cast<uint8_t>(fg & 0x1F);
+
+  const uint8_t br5 = static_cast<uint8_t>((bg >> 11) & 0x1F);
+  const uint8_t bg6 = static_cast<uint8_t>((bg >> 5) & 0x3F);
+  const uint8_t bb5 = static_cast<uint8_t>(bg & 0x1F);
+
+  const uint8_t out_r5 = static_cast<uint8_t>((fr5 * fg_alpha + br5 * bg_alpha) / 255);
+  const uint8_t out_g6 = static_cast<uint8_t>((fg6 * fg_alpha + bg6 * bg_alpha) / 255);
+  const uint8_t out_b5 = static_cast<uint8_t>((fb5 * fg_alpha + bb5 * bg_alpha) / 255);
+
+  return static_cast<uint16_t>((out_r5 << 11) | (out_g6 << 5) | out_b5);
+}
+
+float fpart(float x) { return x - floorf(x); }
+
+float rfpart(float x) { return 1.0f - fpart(x); }
+
+void plotAaPixel(int x, int y, uint16_t color, float coverage) {
+  if (coverage <= 0.0f || x < 0 || y < 0 || x >= radar::kSize || y >= radar::kSize) {
+    return;
+  }
+
+  if (coverage > 1.0f) {
+    coverage = 1.0f;
+  }
+
+  const uint8_t alpha = static_cast<uint8_t>(coverage * 255.0f + 0.5f);
+  const uint16_t base = s_draw->readPixel(x, y);
+  const uint16_t px = blendRgb565(color, base, alpha);
+  s_draw->drawPixel(x, y, px);
+}
+
+void drawAaLine(int x0, int y0, int x1, int y1, uint16_t color) {
+  bool steep = absDiff(y1, y0) > absDiff(x1, x0);
+  if (steep) {
+    std::swap(x0, y0);
+    std::swap(x1, y1);
+  }
+  if (x0 > x1) {
+    std::swap(x0, x1);
+    std::swap(y0, y1);
+  }
+
+  const float dx = static_cast<float>(x1 - x0);
+  const float dy = static_cast<float>(y1 - y0);
+  const float gradient = (dx == 0.0f) ? 0.0f : (dy / dx);
+
+  const float xend1 = roundf(static_cast<float>(x0));
+  const float yend1 = static_cast<float>(y0) + gradient * (xend1 - static_cast<float>(x0));
+  const float xgap1 = rfpart(static_cast<float>(x0) + 0.5f);
+  const int xpxl1 = static_cast<int>(xend1);
+  const int ypxl1 = static_cast<int>(floorf(yend1));
+
+  if (steep) {
+    plotAaPixel(ypxl1, xpxl1, color, rfpart(yend1) * xgap1);
+    plotAaPixel(ypxl1 + 1, xpxl1, color, fpart(yend1) * xgap1);
+  } else {
+    plotAaPixel(xpxl1, ypxl1, color, rfpart(yend1) * xgap1);
+    plotAaPixel(xpxl1, ypxl1 + 1, color, fpart(yend1) * xgap1);
+  }
+
+  float intery = yend1 + gradient;
+
+  const float xend2 = roundf(static_cast<float>(x1));
+  const float yend2 = static_cast<float>(y1) + gradient * (xend2 - static_cast<float>(x1));
+  const float xgap2 = fpart(static_cast<float>(x1) + 0.5f);
+  const int xpxl2 = static_cast<int>(xend2);
+  const int ypxl2 = static_cast<int>(floorf(yend2));
+
+  if (steep) {
+    plotAaPixel(ypxl2, xpxl2, color, rfpart(yend2) * xgap2);
+    plotAaPixel(ypxl2 + 1, xpxl2, color, fpart(yend2) * xgap2);
+  } else {
+    plotAaPixel(xpxl2, ypxl2, color, rfpart(yend2) * xgap2);
+    plotAaPixel(xpxl2, ypxl2 + 1, color, fpart(yend2) * xgap2);
+  }
+
+  if (xpxl2 - xpxl1 <= 1) {
+    return;
+  }
+
+  for (int x = xpxl1 + 1; x < xpxl2; ++x) {
+    const int y = static_cast<int>(floorf(intery));
+    if (steep) {
+      plotAaPixel(y, x, color, rfpart(intery));
+      plotAaPixel(y + 1, x, color, fpart(intery));
+    } else {
+      plotAaPixel(x, y, color, rfpart(intery));
+      plotAaPixel(x, y + 1, color, fpart(intery));
+    }
+    intery += gradient;
+  }
+}
 
 int measureGfxHeight(const lgfx::GFXfont& font) {
   tft.setFont(&font);
@@ -325,26 +687,46 @@ void noseTip(int cx, int cy, float heading_deg, int* tip_x, int* tip_y) {
   *tip_y = cy - static_cast<int>(lroundf(cosf(rad) * radar::kAircraftNoseLenPx));
 }
 
-void drawHeadingTriangle(int cx, int cy, float heading_deg, uint16_t color) {
+void drawHeadingTriangle(int cx, int cy, float heading_deg, uint16_t color,
+                         const char* type) {
   constexpr float kDegToRad = 0.01745329252f;
-  const float rad = heading_deg * kDegToRad;
+  // Sprite points to the right in texture space; radar heading uses 0=up.
+  // Convert heading so icon nose aligns with the on-screen heading convention.
+  const float rad = (90.0f - heading_deg) * kDegToRad;
   const float sin_h = sinf(rad);
   const float cos_h = cosf(rad);
+  const uint8_t (*sprite)[kAirlinerSpriteSize] = spriteForType(type);
 
-  int tip_x = 0;
-  int tip_y = 0;
-  noseTip(cx, cy, heading_deg, &tip_x, &tip_y);
+  for (int dy = -kAirlinerSpriteHalf; dy <= kAirlinerSpriteHalf; ++dy) {
+    for (int dx = -kAirlinerSpriteHalf; dx <= kAirlinerSpriteHalf; ++dx) {
+      const float sx_f = static_cast<float>(dx) * cos_h -
+                         static_cast<float>(dy) * sin_h;
+      const float sy_f = static_cast<float>(dx) * sin_h +
+                         static_cast<float>(dy) * cos_h;
 
-  const int base_x =
-      cx - static_cast<int>(lroundf(sin_h * static_cast<float>(radar::kAircraftTailLenPx)));
-  const int base_y =
-      cy + static_cast<int>(lroundf(cos_h * static_cast<float>(radar::kAircraftTailLenPx)));
+      const int sx = static_cast<int>(lroundf(sx_f)) + kAirlinerSpriteHalf;
+      const int sy = static_cast<int>(lroundf(sy_f)) + kAirlinerSpriteHalf;
+      if (sx < 0 || sy < 0 || sx >= kAirlinerSpriteSize ||
+          sy >= kAirlinerSpriteSize) {
+        continue;
+      }
 
-  const int wing_x = static_cast<int>(lroundf(cos_h * radar::kAircraftTailHalfPx));
-  const int wing_y = static_cast<int>(lroundf(sin_h * radar::kAircraftTailHalfPx));
+      const uint8_t alpha = pgm_read_byte(&sprite[sy][sx]);
+      if (alpha == 0) {
+        continue;
+      }
 
-  s_draw->fillTriangle(tip_x, tip_y, base_x + wing_x, base_y + wing_y,
-                       base_x - wing_x, base_y - wing_y, color);
+      const int px = cx + dx;
+      const int py = cy + dy;
+      if (px < 0 || py < 0 || px >= radar::kSize || py >= radar::kSize) {
+        continue;
+      }
+
+      const uint16_t base = s_draw->readPixel(px, py);
+      const uint16_t out = blendRgb565(color, base, alpha);
+      s_draw->drawPixel(px, py, out);
+    }
+  }
 }
 
 void drawSpeedVector(int cx, int cy, float heading_deg, float track_deg,
@@ -487,6 +869,7 @@ void drawAircraft() {
 
   const size_t n = services::adsb::aircraftCount();
   const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  const uint32_t now_ms = millis();
 
   AircraftDrawItem items[services::adsb::kMaxAircraft];
   BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
@@ -494,15 +877,19 @@ void drawAircraft() {
   size_t dot_count = 0;
 
   for (size_t i = 0; i < n; ++i) {
+    float draw_lat = planes[i].lat;
+    float draw_lon = planes[i].lon;
+    services::adsb::deadReckonPosition(planes[i], now_ms, &draw_lat, &draw_lon);
+
     float dx_km = 0.0f;
     float dy_km = 0.0f;
     float dist_km = 0.0f;
-    offsetKmFromCenter(planes[i].lat, planes[i].lon, &dx_km, &dy_km, &dist_km);
+    offsetKmFromCenter(draw_lat, draw_lon, &dx_km, &dy_km, &dist_km);
 
     if (isInsideOuterRingKm(dist_km)) {
       int x = 0;
       int y = 0;
-      latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
+      latLonToScreen(draw_lat, draw_lon, &x, &y);
       items[draw_count].index = i;
       items[draw_count].x = x;
       items[draw_count].y = y;
@@ -513,7 +900,7 @@ void drawAircraft() {
 
     int dot_x = 0;
     int dot_y = 0;
-    if (!beyondRingEdgeDotFromLatLon(planes[i].lat, planes[i].lon, &dot_x,
+    if (!beyondRingEdgeDotFromLatLon(draw_lat, draw_lon, &dot_x,
                                      &dot_y)) {
       continue;
     }
@@ -533,9 +920,8 @@ void drawAircraft() {
     const size_t i = items[d].index;
     const int x = items[d].x;
     const int y = items[d].y;
-    drawSpeedVector(x, y, planes[i].nose_deg, planes[i].track_deg,
-                    planes[i].gs_knots, radar::kColorTrackVector);
-    drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
+    drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft,
+                        planes[i].type);
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
